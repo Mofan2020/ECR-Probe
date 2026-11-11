@@ -10,7 +10,7 @@ import json
 import threading
 import time
 
-from . import clipboard, commands, guard, netlist, probe
+from . import clipboard, commands, gate, guard, netlist, probe
 from .rules import RuleStore
 from .wsclient import WebSocketClient, WebSocketError
 
@@ -22,6 +22,28 @@ class Bridge:
         self._logs: list[str] = []
         self._target: tuple[str, int, str] | None = None
         self.rules = RuleStore(rule_path)
+
+    # ---------------------------------------------------------------- 闸门
+
+    def gate_status(self) -> dict:
+        return {
+            "ok": True,
+            "passed": gate.gate_passed(),
+            "challenge": gate.CHALLENGE,
+            "dangerous_allowed": gate.dangerous_allowed(),
+        }
+
+    def pass_gate(self, text: str) -> dict:
+        if gate.pass_gate(text if isinstance(text, str) else ""):
+            self._log("确认闸门通过")
+            return {"ok": True}
+        self._log("确认语不对，闸门未开")
+        return {"ok": False, "error": "确认语不对，一个字都不能差"}
+
+    def set_dangerous(self, allowed: bool) -> dict:
+        gate.set_dangerous_allowed(bool(allowed))
+        self._log(f"危险命令解锁 = {bool(allowed)}")
+        return {"ok": True, "dangerous_allowed": gate.dangerous_allowed()}
 
     # ---------------------------------------------------------------- 日志
 
@@ -53,6 +75,7 @@ class Bridge:
                             "direction": c.direction,
                             "note": c.note,
                             "params": c.params_hint,
+                            "risky": c.risky,
                         }
                         for c in items
                     ],
@@ -266,6 +289,16 @@ class Bridge:
         if not method or not isinstance(method, str):
             return {"ok": False, "error": "method 不能空"}
 
+        if not gate.gate_passed():
+            self._log(f"拒绝 {method}：确认闸门没过")
+            return {"ok": False, "error": "还没过确认闸门，先在界面上确认一次"}
+
+        try:
+            gate.check_command(method, risky=commands.is_risky(method))
+        except gate.Blocked as exc:
+            self._log(f"拒绝 {method}：{exc}")
+            return {"ok": False, "error": str(exc), "blocked": True}
+
         params: dict = {}
         if params_json and params_json.strip():
             try:
@@ -293,6 +326,23 @@ class Bridge:
         fired: list[dict] = []
         for rule in self.rules.for_method(triggered_by):
             self._log(f"[规则] {rule.trigger} → {rule.action} ×{rule.repeat}")
+            try:
+                gate.check_command(rule.action, risky=commands.is_risky(rule.action))
+            except gate.Blocked as exc:
+                self._log(f"[规则] 动作被策略拦住：{exc}")
+                fired.append(
+                    {
+                        "id": rule.id,
+                        "trigger": rule.trigger,
+                        "action": rule.action,
+                        "repeat": rule.repeat,
+                        "ok": False,
+                        "note": rule.note,
+                        "blocked": True,
+                    }
+                )
+                continue
+
             ok = True
             for index in range(rule.repeat):
                 if index and rule.delay_ms:

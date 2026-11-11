@@ -22,6 +22,52 @@ SPELLING_NOTE = (
 )
 
 
+# 危险命令：关机、重启、管控、远程键鼠、录屏这类。
+# 默认全部锁死，必须在终端里显式解锁才能发（见 gate.py）。
+# 判断用后缀，因为同一动作在多个命名空间下重复出现。
+_RISKY_SUFFIXES: tuple[str, ...] = (
+    ".shutdown",
+    ".reboot",
+    ".wakeup",
+    ".clearScreen",
+    ".turnOffScreen",
+    ".blackScreen.on",
+    ".notifyOfflineBlackScreenMode",
+    ".offlineBlackscreenMode",
+    ".keyboardMouse",
+    ".StartNetworkControl",
+    ".StopNetworkControl",
+    ".UpdateNetworkControlPolicy",
+    ".StartProcessControl",
+    ".StopProcessControl",
+    ".UpdateProcessControlPolicy",
+    ".sendNetworkPolicyToStudent",
+    ".sendProcessPolicyToStudent",
+    ".startNetworkControl",
+    ".stopNetworkControl",
+    ".startProcessControl",
+    ".stopProcessControl",
+    ".previewStartRecord",
+    ".previewStopRecord",
+    ".startRecord",
+    ".stopRecord",
+    ".desktopBroadcast.close",
+    ".desktopBroadcast.removeStudent",
+    ".notifyClearDesktopApp",
+    ".logoutDevice",
+    ".upgrade",
+    ".launchCustomApp",
+    ".openApp",
+    ".openAPP",
+    ".openUrl",
+)
+
+
+def is_risky(name: str) -> bool:
+    """这条命令算不算危险。"""
+    return any(name.endswith(suffix) for suffix in _RISKY_SUFFIXES)
+
+
 @dataclass(frozen=True)
 class Command:
     """一条命令。"""
@@ -38,6 +84,10 @@ class Command:
             return ""
         head = self.name[len("local.") :]
         return head.split(".", 1)[0]
+
+    @property
+    def risky(self) -> bool:
+        return is_risky(self.name)
 
 
 def _cmd(name: str, note: str = "", **params: str) -> Command:

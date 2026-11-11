@@ -10,7 +10,7 @@ import json
 import pathlib
 import sys
 
-from . import __version__, commands, guard, probe
+from . import __version__, commands, gate, guard, probe
 from .bridge import Bridge
 
 GUI_DIR = pathlib.Path(__file__).parent / "gui"
@@ -49,7 +49,59 @@ def cmd_locate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ack(args: argparse.Namespace) -> int:
+    if gate.gate_passed():
+        print("确认闸门已经过了。")
+        return 0
+    print("把下面这句一字不差地输入（含标点）：\n")
+    print(f"  {gate.CHALLENGE}\n")
+    try:
+        typed = input("> ")
+    except EOFError:
+        print("没有收到输入。", file=sys.stderr)
+        return 1
+    if not gate.pass_gate(typed):
+        print("不一致，闸门没开。", file=sys.stderr)
+        return 1
+    print("已确认。")
+    return 0
+
+
+def cmd_allow_dangerous(args: argparse.Namespace) -> int:
+    if args.lock:
+        gate.set_dangerous_allowed(False)
+        print("危险命令已重新锁死。")
+        return 0
+    if gate.dangerous_allowed():
+        print("危险命令本来就是解锁状态。加 --lock 可以重新锁上。")
+        return 0
+    if not gate.gate_passed():
+        print("先过确认闸门：ecr-probe ack", file=sys.stderr)
+        return 1
+    print("这会放开这些动作：关机、重启、网络管控、进程管控、远程键鼠、录屏、关闭广播。")
+    print("只在你确实要测这些功能时开。测完用 --lock 关上。\n")
+    try:
+        confirm = input("确认解锁？输入 yes 继续：")
+    except EOFError:
+        return 1
+    if confirm.strip().lower() != "yes":
+        print("已取消。")
+        return 1
+    gate.set_dangerous_allowed(True)
+    print("已解锁。")
+    return 0
+
+
 def cmd_send(args: argparse.Namespace) -> int:
+    if not gate.gate_passed():
+        print("先过确认闸门：ecr-probe ack", file=sys.stderr)
+        return 2
+    try:
+        gate.check_command(args.method, risky=commands.is_risky(args.method))
+    except gate.Blocked as exc:
+        print(f"被策略拦住：{exc}", file=sys.stderr)
+        return 2
+
     try:
         addr, port = guard.guard_target(args.host, args.port)
     except (guard.NonLocalError, ValueError) as exc:
@@ -170,6 +222,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     disc = sub.add_parser("discover", help="按进程名找本机监听端口")
     disc.set_defaults(func=cmd_discover)
+
+    ack = sub.add_parser("ack", help="过确认闸门")
+    ack.set_defaults(func=cmd_ack)
+
+    danger = sub.add_parser("allow-dangerous", help="解锁危险命令（关机/管控/键鼠/录屏）")
+    danger.add_argument("--lock", action="store_true", help="重新锁死")
+    danger.set_defaults(func=cmd_allow_dangerous)
 
     loc = sub.add_parser("locate", help="在本机找服务端")
     loc.add_argument("--host", default="127.0.0.1")

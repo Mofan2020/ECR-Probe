@@ -101,6 +101,8 @@ const document = {
 
 // ---------------------------------------------------------------- 假桥
 
+const CHALLENGE = "我确认只对自己拥有的设备使用，并已读完全部免责条款";
+let gatePassed = false;
 const called = [];
 function makeApi() {
   const handler = {
@@ -116,8 +118,8 @@ function makeApi() {
               {
                 title: "组一",
                 items: [
-                  { name: "local.teacher->student.shutdown", direction: "teacher->student", note: "关机", params: {} },
-                  { name: "local.teacher->student.startBroadcast", direction: "teacher->student", note: "广播", params: { displayMode: "window" } },
+                  { name: "local.teacher->student.shutdown", direction: "teacher->student", note: "关机", params: {}, risky: true },
+                  { name: "local.teacher->student.startBroadcast", direction: "teacher->student", note: "广播", params: { displayMode: "window" }, risky: false },
                 ],
               },
             ],
@@ -127,6 +129,22 @@ function makeApi() {
         if (prop === "get_rules") return Promise.resolve({ ok: true, rules: [], path: "/tmp/x.json" });
         if (prop === "local_info") return Promise.resolve({ ok: true, addresses: ["127.0.0.1"] });
         if (prop === "status") return Promise.resolve({ ok: true, connected: false });
+        if (prop === "gate_status") {
+          return Promise.resolve({
+            ok: true,
+            passed: gatePassed,
+            challenge: "我确认只对自己拥有的设备使用，并已读完全部免责条款",
+            dangerous_allowed: false,
+          });
+        }
+        if (prop === "pass_gate") {
+          const ok = String(args[0] || "").trim() === CHALLENGE;
+          if (ok) gatePassed = true;
+          return Promise.resolve(ok ? { ok: true } : { ok: false, error: "不一致" });
+        }
+        if (prop === "set_dangerous") {
+          return Promise.resolve({ ok: true, dangerous_allowed: !!args[0] });
+        }
         if (prop === "copy_text") return Promise.resolve({ ok: true });
         if (prop === "send") {
           return Promise.resolve({ ok: true, payload: "{}", reply: "{}", fired: [{ trigger: "a", action: "b", repeat: 1, ok: true }] });
@@ -179,10 +197,29 @@ const sandbox = {
   }
   check(true, "boot() 执行完毕无异常");
 
-  // 让异步的 loadCommands 等跑完
-  await new Promise((r) => setTimeout(r, 60));
+  const tick = (ms) => new Promise((r) => setTimeout(r, ms));
+  await tick(80);
 
-  check(called.includes("get_commands"), "启动时取了命令目录");
+  // ---- 闸门：没过时工作台不许启动 ----
+  const gateEl = elementFor("#gate");
+  check(!gateEl.classList.contains("hide"), "闸门未过时遮罩可见");
+  check(!called.includes("get_commands"), "闸门未过时不加载命令目录");
+  check(elementFor("#gatePhrase").textContent === CHALLENGE, "遮罩里显示了确认语");
+
+  // 输错不放行
+  elementFor("#gateInput").value = "瞎写的";
+  elementFor("#gateGo").dispatch("click", {});
+  await tick(80);
+  check(!gateEl.classList.contains("hide"), "确认语不对时遮罩不消失");
+  check(!called.includes("get_commands"), "确认语不对时不加载命令");
+  check(elementFor("#gateMsg").textContent === "不一致", "输错有提示");
+
+  // 输对才放行
+  elementFor("#gateInput").value = CHALLENGE;
+  elementFor("#gateGo").dispatch("click", {});
+  await tick(140);
+  check(gateEl.classList.contains("hide"), "确认语正确后遮罩隐藏");
+  check(called.includes("get_commands"), "过闸门后才加载命令目录");
   check(called.includes("get_log"), "启动时取了日志");
   check(called.includes("get_rules"), "启动时取了规则");
   check(called.includes("local_info"), "启动时取了本机地址");
@@ -210,6 +247,17 @@ const sandbox = {
   copyBtn.dispatch("click", {});
   await new Promise((r) => setTimeout(r, 40));
   check(called.includes("copy_text"), "复制按钮调到了桥的 copy_text");
+
+  // 危险命令要有锁标记
+  const riskyRows = groups.children.filter(
+    (c) => c.className === "cmd" && String(c.innerHTML).includes("lock")
+  );
+  check(riskyRows.length > 0, "危险命令渲染出了锁标记");
+
+  // 危险开关点得动
+  elementFor("#dangerToggle").dispatch("click", {});
+  await tick(60);
+  check(called.includes("set_dangerous"), "危险开关调到了桥的 set_dangerous");
 
   console.log("");
   if (failures) {

@@ -20,6 +20,42 @@
 
 按进程找在 **Windows 上不需要管理员**（走 `GetExtendedTcpTable`）。macOS / Linux 上读其他进程的套接字需要 root，没权限时会退回扫端口，功能不受影响只是慢一点。
 
+## 两道摩擦
+
+不是安全机制，是让人停一秒。
+
+**确认闸门。** 首次使用要原样输入一句确认语（`ecr_probe/gate.py` 里的 `CHALLENGE`）。界面里输，或者终端 `ecr-probe ack`。敲错一个字不放行。过了之后写进 `~/.ecr-probe/gate.json`。
+
+**危险命令锁。** 这些默认全部拒绝发送：
+
+```
+关机 / 重启 / 唤醒 / 清屏 / 关屏 / 黑屏
+网络管控（启用·停用·更新策略）
+进程管控（启用·停用·更新策略）
+远程键鼠注入 / 远程开应用·开网址
+桌面录屏 / 关广播 / 踢学生
+云端 logoutDevice / upgrade
+```
+
+要放开必须在终端跑：
+
+```bash
+ecr-probe allow-dangerous      # 输 yes 确认
+ecr-probe allow-dangerous --lock   # 测完锁回去
+```
+
+界面上那个「危险」开关只能切换、不能绕过——它跟终端读的是同一个策略文件。
+
+**这两层都挡不住会读文档的人。** 真正的边界是下面的本机地址守卫，那个是硬的。
+
+## 本机边界
+
+`ecr_probe/guard.py` 只放行两类目标：回环地址，以及本机网卡上真实存在的地址。其他任何地址——包括同一局域网内的另一台机器——在建立连接之前就被拒绝。
+
+含义：在一台机器上跑这个程序，够不到除它自己以外的任何设备。
+
+已知的一个未验证边界：本机客户端收到 `local.teacher->student.*` 之后，是否会用自己的连接把它转发给别的学生机，没有确认过。本工具自己的出站只到本机，但管不了本机客户端转发行为。
+
 ## 装
 
 ```bash
@@ -40,6 +76,9 @@ ecr-probe gui
 命令行：
 
 ```bash
+# 首次使用先过闸门
+ecr-probe ack
+
 # 按进程找端口
 ecr-probe discover
 
@@ -81,7 +120,7 @@ ecr-probe send --port 33331 --path / \
 
 ## 它不保证能用
 
-仓库里 133 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
+仓库里 162 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
 
 静态分析确认了命令名和部分字段名，但没确认：
 
@@ -96,6 +135,7 @@ ecr-probe send --port 33331 --path / \
 
 ```
 ecr_probe/
+  gate.py         确认闸门 + 危险命令策略
   guard.py        本机地址守卫，唯一的出站闸门
   netlist.py      读内核监听表（Windows 用 GetExtendedTcpTable）
   wsclient.py     RFC 6455 客户端，自己实现，看得见每个字节
@@ -106,7 +146,7 @@ ecr_probe/
   clipboard.py    写系统剪贴板
   mockserver.py   测试用 WS 靶子
   gui/            index.html / style.css / app.js
-tests/            133 个
+tests/            162 个
 scripts/
   check-app-js.js app.js 假 DOM 冒烟测试
 ```

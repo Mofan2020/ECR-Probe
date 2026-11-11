@@ -17,8 +17,8 @@ from ecr_probe.rules import Rule
 
 
 @pytest.fixture()
-def bridge(tmp_path: pathlib.Path) -> Bridge:
-    """规则落在临时目录，绝不碰用户真实的 ~/.ecr-probe。"""
+def bridge(tmp_path: pathlib.Path, acked_gate: pathlib.Path) -> Bridge:
+    """规则落在临时目录，闸门已经过掉——绝不碰用户真实的 ~/.ecr-probe。"""
     return Bridge(rule_path=tmp_path / "rules.json")
 
 
@@ -239,6 +239,85 @@ def test_clear_log(bridge: Bridge) -> None:
     assert bridge.get_log()["lines"]
     bridge.clear_log()
     assert not bridge.get_log()["lines"]
+
+
+# ------------------------------------------------------------------ 闸门与策略
+
+
+def test_send_refused_before_gate(tmp_path: pathlib.Path, server: MockServer) -> None:
+    """没过闸门，连得上也不许发。"""
+    from ecr_probe import gate
+
+    bare = Bridge(rule_path=tmp_path / "rules.json")
+    assert not gate.gate_passed()
+    bare.connect("127.0.0.1", server.port, "/")
+    res = bare.send("local.teacher->student.turnOnMute", "")
+    assert not res["ok"]
+    assert "闸门" in res["error"]
+    assert not server.received
+
+
+def test_risky_command_blocked_while_locked(bridge: Bridge, server: MockServer) -> None:
+    bridge.connect("127.0.0.1", server.port, "/")
+    res = bridge.send("local.teacher->student.shutdown", "")
+    assert not res["ok"]
+    assert res.get("blocked")
+    assert "allow-dangerous" in res["error"]
+    assert not server.received
+
+
+def test_risky_command_allowed_after_unlock(bridge: Bridge, server: MockServer) -> None:
+    from ecr_probe import gate
+
+    bridge.connect("127.0.0.1", server.port, "/")
+    assert bridge.set_dangerous(True)["ok"]
+    res = bridge.send("local.teacher->student.shutdown", "")
+    assert res["ok"], res
+    assert server.received
+    gate.set_dangerous_allowed(False)
+
+
+def test_harmless_command_works_while_locked(bridge: Bridge, server: MockServer) -> None:
+    bridge.connect("127.0.0.1", server.port, "/")
+    res = bridge.send("local.teacher->student.turnOnMute", "")
+    assert res["ok"]
+
+
+def test_risky_rule_action_blocked(bridge: Bridge, server: MockServer) -> None:
+    """规则也不能绕过策略去发关机。"""
+    from ecr_probe.rules import Rule
+
+    bridge.rules.rules = [Rule(trigger="a.b", action="local.teacher->student.shutdown")]
+    bridge.connect("127.0.0.1", server.port, "/")
+    res = bridge.send("a.b", "")
+    assert res["ok"]
+    assert res["fired"], "规则应该记下被拦这件事"
+    assert res["fired"][0]["blocked"] is True
+    methods = [json.loads(m)["method"] for m in server.received]
+    assert methods == ["a.b"], "关机命令不该真的发出去"
+
+
+def test_gate_status_reports_challenge(bridge: Bridge) -> None:
+    gs = bridge.gate_status()
+    assert gs["ok"]
+    assert gs["passed"] is True
+    assert gs["challenge"] == __import__("ecr_probe.gate", fromlist=["CHALLENGE"]).CHALLENGE
+
+
+def test_pass_gate_wrong_then_right(bridge: Bridge) -> None:
+    from ecr_probe import gate
+
+    gate.reset_gate()
+    assert not bridge.pass_gate("瞎写的")["ok"]
+    assert not gate.gate_passed()
+    assert bridge.pass_gate(gate.CHALLENGE)["ok"]
+    assert gate.gate_passed()
+
+
+def test_commands_report_risky_flag(bridge: Bridge) -> None:
+    items = [i for g in bridge.get_commands()["groups"] for i in g["items"]]
+    assert any(i["risky"] for i in items)
+    assert any(not i["risky"] for i in items)
 
 
 def test_guard_used_by_every_entry_point() -> None:

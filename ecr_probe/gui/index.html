@@ -8,6 +8,31 @@
 </head>
 <body>
 
+<div class="gate" id="gate">
+  <div class="gate-box">
+    <h2>使用前确认</h2>
+    <p class="gate-legal">
+      本程序是静态分析产物，用于在自己拥有的设备上验证互操作性与安全性。
+      它只连接本机地址；但"只连本机"不等于"不会出事"——你自己机器上的服务端
+      同样会执行你发过去的每一条指令。下面这些动作在解锁后都可以触发：
+      关机、重启、屏幕管控、网络管控、进程管控、远程键鼠注入、桌面录屏。
+    </p>
+    <p class="gate-legal">
+      在教室里对别人的机器做这些事，性质是干扰教学秩序，与作者无关。
+      在读完全部条款之前不要继续：仓库根目录 <code>DISCLAIMER.md</code>。
+    </p>
+    <p class="gate-task">
+      确认请在下方原样输入下面这句（含全部标点，一个字都不能差）：
+    </p>
+    <div class="gate-phrase" id="gatePhrase"></div>
+    <input id="gateInput" spellcheck="false" autocomplete="off" placeholder="在这里输入">
+    <div class="row">
+      <button id="gateGo">确认</button>
+      <span class="hint" id="gateMsg"></span>
+    </div>
+  </div>
+</div>
+
 <div class="warn" id="warn">
   <strong>仅限本机</strong>
   <span>只连接本机地址（回环或本机网卡）。改主机名也拦得住——非本机地址在 Python 侧就被拒绝，不会发出一个包。</span>
@@ -45,6 +70,11 @@
     </div>
     <div class="row">
       <span class="status" id="status">未连接</span>
+    </div>
+    <div class="row danger-row">
+      <label title="关机/重启/网络管控/进程管控/键鼠/录屏">危险</label>
+      <span class="hint" id="dangerState">已锁死</span>
+      <button id="dangerToggle" class="mini ghost">解锁</button>
     </div>
     <div id="localAddrs" class="hint"></div>
     <div id="hits" class="scroll hits"></div>

@@ -106,7 +106,9 @@ function renderCommands(filter) {
       row.title = `${item.name}\n${item.note || ""}`;
       row.dataset.name = item.name;
       const dir = item.direction ? `<span class="dir">${esc(item.direction)}</span>  ` : "";
-      row.innerHTML = dir + esc(item.name) + (item.note ? `  <span class="note">${esc(item.note)}</span>` : "");
+      const lock = item.risky ? '<span class="lock">锁</span>  ' : "";
+      if (item.risky) row.classList.add("risky");
+      row.innerHTML = dir + lock + esc(item.name) + (item.note ? `  <span class="note">${esc(item.note)}</span>` : "");
       row.addEventListener("click", () => pick(item, row));
       host.appendChild(row);
       shown += 1;
@@ -416,7 +418,63 @@ async function resetRules() {
 
 /* ---------------------------------------------------------------- 启动 */
 
+/* ---------------------------------------------------------------- 闸门 */
+
+async function gateFlow() {
+  const gs = await api().gate_status();
+  if (gs.passed) {
+    $("#gate").classList.add("hide");
+    await startWorkbench(gs);
+    return;
+  }
+  $("#gatePhrase").textContent = gs.challenge;
+  $("#gate").classList.remove("hide");
+
+  const submit = async () => {
+    const typed = $("#gateInput").value;
+    const res = await api().pass_gate(typed);
+    if (res.ok) {
+      $("#gate").classList.add("hide");
+      await startWorkbench(await api().gate_status());
+    } else {
+      $("#gateMsg").textContent = res.error || "不一致";
+      $("#gateInput").value = "";
+      $("#gateInput").focus();
+    }
+  };
+  $("#gateGo").addEventListener("click", submit);
+  $("#gateInput").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  $("#gateInput").focus();
+}
+
+async function startWorkbench(gateState) {
+  refreshDanger(gateState && gateState.dangerous_allowed);
+  loadCommands();
+  loadLocal();
+  loadRules();
+  refreshLog();
+  updateStatus();
+  pollTimer = setInterval(refreshLog, 2500);
+}
+
+function refreshDanger(on) {
+  const row = document.querySelector(".danger-row");
+  $("#dangerState").textContent = on ? "已解锁" : "已锁死";
+  $("#dangerToggle").textContent = on ? "重新锁死" : "解锁";
+  if (row) row.classList.toggle("on", !!on);
+}
+
+async function toggleDanger() {
+  const gs = await api().gate_status();
+  const res = await api().set_dangerous(!gs.dangerous_allowed);
+  if (res.ok) refreshDanger(res.dangerous_allowed);
+  refreshLog();
+}
+
+/* ---------------------------------------------------------------- 启动 */
+
 function boot() {
+  $("#dangerToggle").addEventListener("click", toggleDanger);
   $("#warnOk").addEventListener("click", () => $("#warn").classList.add("hide"));
   $("#discover").addEventListener("click", discover);
   $("#locate").addEventListener("click", locate);
@@ -440,12 +498,7 @@ function boot() {
     });
   });
 
-  loadCommands();
-  loadLocal();
-  loadRules();
-  refreshLog();
-  updateStatus();
-  pollTimer = setInterval(refreshLog, 2500);
+  gateFlow();
 }
 
 window.addEventListener("pywebviewready", boot);
