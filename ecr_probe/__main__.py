@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import pathlib
 import sys
@@ -24,6 +25,36 @@ ECR Probe —— 仅限本机使用
 
 用它去操作别人的设备是滥用行为，与作者无关。完整条款见 DISCLAIMER.md。
 """.strip()
+
+
+def _ensure_output_encoding() -> None:
+    """让标准输出能吃下中文。
+
+    Windows 控制台默认代码页（437/1252/936）编码不了任意中文，
+    一 print 就 UnicodeEncodeError，整个命令直接崩。这是 CI 在
+    windows-latest 上抓到的：`ecr-probe resources` 打印「持久目录：」
+    就炸了。
+
+    两件事一起做：
+    1. 把控制台输出代码页切到 65001（UTF-8），让终端按 UTF-8 解释；
+    2. 把 Python 的流也改成 UTF-8，并用 errors="replace" 兜底——
+       哪怕上面那步失败（比如没有真正的控制台），最坏也只是显示问号，
+       不会让命令挂掉。
+
+    宁可难看，不可崩掉。
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        except Exception:
+            pass
+
+    for stream in (sys.stdout, sys.stderr):
+        # 被替换成不支持 reconfigure 的对象时跳过，不影响主流程
+        with contextlib.suppress(AttributeError, OSError):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def cmd_locate(args: argparse.Namespace) -> int:
@@ -303,6 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_output_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
 
