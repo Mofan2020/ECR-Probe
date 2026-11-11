@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      # 不装 pywebview：测试全在无界面路径上，装它只会给 CI 引入
+      # GTK / pyobjc 这些跟被测逻辑无关的系统依赖问题。
+      - name: Lint
+        run: python -m ruff check ecr_probe tests scripts
+
+      - name: Check lint config is honest
+        shell: bash
+        run: |
+          # 确认 RUF001/2/3 确实被忽略：这项目写中文注释，全角标点是对的。
+          # 如果哪天有人把它从 ignore 里删了，CI 会在几百条误报上红掉，
+          # 与其让人去猜，不如现在就说明白。
+          python - <<'PY'
+          import tomllib, pathlib, sys
+          cfg = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          ignore = cfg["tool"]["ruff"]["lint"]["ignore"]
+          missing = {"RUF001", "RUF002", "RUF003"} - set(ignore)
+          if missing:
+              sys.exit(f"中文注释需要的 ignore 被删了：{missing}")
+          print("ok")
+          PY
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: App.js smoke (needs node)
+        shell: bash
+        run: |
+          if command -v node >/dev/null 2>&1; then
+            node scripts/check-app-js.js
+          else
+            echo "::warning::本 runner 没有 node，跳过前端冒烟"
+          fi
+
+  resources:
+    name: Resource gate (release 前必过)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements-dev.txt
+
+      # 「校验通过才加载」这条是产品承诺，单独跑一遍并打印真实输出，
+      # 不要只靠单元测试里的断言。
+      - name: 资源释放与校验
+        run: |
+          export ECR_PROBE_HOME="$RUNNER_TEMP/ecr-home"
+
+          echo "--- 首次释放 ---"
+          python -m ecr_probe resources
+
+          echo "--- 第二次（应复用，不重写）---"
+          python -m ecr_probe resources
+
+          echo "--- 篡改一个文件，看是否被判不一致 ---"
+          echo "// tampered" >> "$ECR_PROBE_HOME/resources/app.js"
+          python -m ecr_probe resources | tee /tmp/after-tamper.txt
+          grep -q "不通过" /tmp/after-tamper.txt
+
+          echo "--- 替换后应恢复一致 ---"
+          python -m ecr_probe resources --force | tee /tmp/after-force.txt
+          grep -q "复核：通过" /tmp/after-force.txt
+
+      - name: 确认摘要文件存在且可读
+        run: |
+          export ECR_PROBE_HOME="$RUNNER_TEMP/ecr-home"
+          test -f "$ECR_PROBE_HOME/resources/.resources.digest"
+          python -c "import json,os;d=json.load(open(os.environ['ECR_PROBE_HOME']+'/resources/.resources.digest'));print('files:',len(d['files']))"

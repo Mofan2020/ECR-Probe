@@ -175,6 +175,42 @@ def cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resources(args: argparse.Namespace) -> int:
+    from . import resources
+
+    target = resources.resources_dir()
+    try:
+        source = resources.bundled_dir()
+    except resources.ResourceError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"持久目录：{target}")
+    print(f"打包资源：{source}")
+
+    if source is None:
+        print("找不到打包进去的界面资源。", file=sys.stderr)
+        return 1
+
+    expected = resources.compute_manifest(source)
+    print(f"文件数：{len(expected)}")
+
+    ok, reason = resources.verify(target, expected)
+    print(f"校验：{'通过' if ok else '不通过'}（{reason}）")
+
+    if args.force or not ok:
+        try:
+            path = resources.ensure_gui(force=args.force)
+        except resources.ResourceError as exc:
+            print(f"释放失败：{exc}", file=sys.stderr)
+            return 1
+        print(f"已释放到：{path}")
+        ok2, reason2 = resources.verify(path, expected)
+        print(f"复核：{'通过' if ok2 else '不通过'}（{reason2}）")
+
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     for title, items in commands.GROUPS.items():
         print(f"\n{title}（{len(items)}）")
@@ -189,12 +225,26 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_gui(args: argparse.Namespace) -> int:
     import webview
 
+    from . import resources
+
     print(DISCLAIMER)
     print()
+
+    # 资源先备好再开窗。校验不过就整目录替换，替换失败直接退出——
+    # 不要带着半套资源起一个看起来正常、点下去全错的界面。
+    try:
+        gui_dir = resources.ensure_gui(force=args.force_resources)
+    except resources.ResourceError as exc:
+        print(f"界面资源准备失败：{exc}", file=sys.stderr)
+        return 3
+
+    print(f"界面资源：{gui_dir}")
+    print()
+
     bridge = Bridge()
     webview.create_window(
         "ECR Probe",
-        str(GUI_DIR / "index.html"),
+        str(gui_dir / "index.html"),
         js_api=bridge,
         width=1180,
         height=820,
@@ -215,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     gui = sub.add_parser("gui", help="开窗口（默认）")
     gui.add_argument("--debug", action="store_true", help="打开 webview 调试")
+    gui.add_argument("--force-resources", action="store_true", help="强制重新释放界面资源")
     gui.set_defaults(func=cmd_gui)
 
     lst = sub.add_parser("list", help="列出全部命令")
@@ -222,6 +273,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     disc = sub.add_parser("discover", help="按进程名找本机监听端口")
     disc.set_defaults(func=cmd_discover)
+
+    res = sub.add_parser("resources", help="查看/校验/重新释放界面资源")
+    res.add_argument("--force", action="store_true", help="强制重新释放")
+    res.set_defaults(func=cmd_resources)
 
     ack = sub.add_parser("ack", help="过确认闸门")
     ack.set_defaults(func=cmd_ack)

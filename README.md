@@ -56,6 +56,36 @@ ecr-probe allow-dangerous --lock   # 测完锁回去
 
 已知的一个未验证边界：本机客户端收到 `local.teacher->student.*` 之后，是否会用自己的连接把它转发给别的学生机，没有确认过。本工具自己的出站只到本机，但管不了本机客户端转发行为。
 
+## 单文件与资源校验
+
+发布物是单文件，没有安装程序。
+
+界面资源打包在可执行文件里，启动时释放到持久目录：
+
+| 平台 | 路径 |
+|---|---|
+| Windows | `%LOCALAPPDATA%\ECR-Probe\resources` |
+| macOS | `~/Library/Application Support/ECR-Probe/resources` |
+| Linux | `~/.local/share/ecr-probe/resources` |
+
+`ECR_PROBE_HOME` 可以覆盖根目录。
+
+每次启动逐文件比对 sha256，**校验通过才加载**：
+
+- 一致 → 直接复用，不重写
+- 不一致（文件被改过、缺了、多了残留、或者换了新版本）→ 整个目录换掉
+
+整目录替换而不是逐文件修补，因为"文件都在、内容已经不对"是最难查的状态：界面报错但文件齐全，排查是无底洞。
+
+替换走「写到临时目录 → 自检 → 整体换名」，中途被杀不会留下半个目录，也不会让下一次启动读到半套资源。
+
+出问题可以单独查：
+
+```bash
+ecr-probe resources           # 打印路径、文件数、校验结果，不一致就顺手修
+ecr-probe resources --force   # 强制重新释放
+```
+
 ## 装
 
 ```bash
@@ -120,7 +150,7 @@ ecr-probe send --port 33331 --path / \
 
 ## 它不保证能用
 
-仓库里 162 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
+仓库里 189 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
 
 静态分析确认了命令名和部分字段名，但没确认：
 
@@ -136,6 +166,7 @@ ecr-probe send --port 33331 --path / \
 ```
 ecr_probe/
   gate.py         确认闸门 + 危险命令策略
+  resources.py    界面资源释放到持久目录 + sha256 校验
   guard.py        本机地址守卫，唯一的出站闸门
   netlist.py      读内核监听表（Windows 用 GetExtendedTcpTable）
   wsclient.py     RFC 6455 客户端，自己实现，看得见每个字节
@@ -146,9 +177,13 @@ ecr_probe/
   clipboard.py    写系统剪贴板
   mockserver.py   测试用 WS 靶子
   gui/            index.html / style.css / app.js
-tests/            162 个
+tests/            189 个
+launcher.py       打包入口
 scripts/
   check-app-js.js app.js 假 DOM 冒烟测试
+.github/workflows/
+  ci.yml          三平台 × 两版本测试 + 资源门禁
+  release.yml     tag 触发：门禁 → 打包单文件 → 发 Pre-release
 ```
 
 ## 测试
