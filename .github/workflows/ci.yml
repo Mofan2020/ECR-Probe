@@ -44,15 +44,16 @@ jobs:
           # 确认 RUF001/2/3 确实被忽略：这项目写中文注释，全角标点是对的。
           # 如果哪天有人把它从 ignore 里删了，CI 会在几百条误报上红掉，
           # 与其让人去猜，不如现在就说明白。
-          python - <<'PY'
-          import tomllib, pathlib, sys
-          cfg = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
-          ignore = cfg["tool"]["ruff"]["lint"]["ignore"]
-          missing = {"RUF001", "RUF002", "RUF003"} - set(ignore)
-          if missing:
-              sys.exit(f"中文注释需要的 ignore 被删了：{missing}")
-          print("ok")
-          PY
+          #
+          # 用文本匹配而不是 tomllib：tomllib 是 3.11 才有的，
+          # 本仓库支持 3.10，用它会在这个版本的 job 上直接炸。
+          for rule in RUF001 RUF002 RUF003; do
+            if ! grep -q "$rule" pyproject.toml; then
+              echo "::error::中文注释需要的 ignore 里缺 $rule"
+              exit 1
+            fi
+          done
+          echo "ok"
 
       - name: Tests
         run: python -m pytest -q

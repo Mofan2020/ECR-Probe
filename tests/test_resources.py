@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import sys
 
 import pytest
 
@@ -44,9 +45,15 @@ def test_app_data_dir_respects_env(monkeypatch: pytest.MonkeyPatch, tmp_path: pa
 
 
 def test_app_data_dir_platform_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """目录名跟平台惯例走：Windows/macOS 用 ECR-Probe，Linux 用小写。
+
+    这不是随便定的——Linux 上应用数据目录用小写是惯例，Windows 和 macOS
+    用显示名也是惯例。测试要跟着平台走，不能写死一个。
+    """
     monkeypatch.delenv("ECR_PROBE_HOME", raising=False)
     got = resources.app_data_dir()
-    assert got.name == "ECR-Probe"
+    expected = "ecr-probe" if sys.platform not in {"win32", "darwin"} else "ECR-Probe"
+    assert got.name == expected
 
 
 def test_bundled_dir_found_in_source_tree() -> None:

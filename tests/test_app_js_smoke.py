@@ -25,6 +25,11 @@ def test_app_js_boots_in_fake_dom() -> None:
         ["node", str(SCRIPT)],
         capture_output=True,
         text=True,
+        # 必须显式指定编码：Windows 上 text=True 会按本地代码页（cp1252/cp936）
+        # 解码，而 node 输出的是 UTF-8 中文，直接 UnicodeDecodeError，
+        # stdout 变成 None，后面 "x" in None 又炸一次。
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
         cwd=BASE,
     )
