@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecr-probe"
+version = "0.1.0"
+description = "Local-only probe for the Seewo YiQiXue classroom WebSocket protocol"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Skyc8266" }]
+keywords = ["seewo", "classroom", "websocket", "reverse-engineering", "security-research"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Topic :: Security",
+]
+dependencies = [
+  "pywebview>=5.0",
+  "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+ecr-probe = "ecr_probe.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Mofan2020/ECR-Probe"
+
+[tool.setuptools]
+packages = ["ecr_probe"]
+
+[tool.setuptools.package-data]
+ecr_probe = ["gui/*.html", "gui/*.css", "gui/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+# RUF001/2/3 是"全角标点可能有歧义"，这个项目的注释和文档本来就是中文，
+# 全角标点是正确的写法，不是笔误。关掉。
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECR Probe</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="warn" id="warn">
+  <strong>仅限本机</strong>
+  <span>只连接本机地址（回环或本机网卡）。改主机名也拦得住——非本机地址在 Python 侧就被拒绝，不会发出一个包。</span>
+  <button class="warn-ok" id="warnOk">知道了</button>
+</div>
+
+<header>
+  <h1>ECR Probe</h1>
+  <p class="sub">易启学课堂协议探测台 · 静态分析产物 · 未在真实客户端上验证</p>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>目标</h2>
+    <div class="row">
+      <label>主机</label>
+      <input id="host" value="127.0.0.1" spellcheck="false">
+    </div>
+    <div class="row">
+      <label>端口</label>
+      <input id="ports" value="33331,39173,3333" spellcheck="false">
+    </div>
+    <div class="row">
+      <button id="discover" class="alt">按进程找</button>
+      <button id="locate">扫描端口</button>
+    </div>
+    <div class="row">
+      <label>路径</label>
+      <input id="path" value="/" spellcheck="false">
+    </div>
+    <div class="row">
+      <button id="connect">连接</button>
+      <button id="disconnect" class="ghost">断开</button>
+    </div>
+    <div class="row">
+      <span class="status" id="status">未连接</span>
+    </div>
+    <div id="localAddrs" class="hint"></div>
+    <div id="hits" class="scroll hits"></div>
+  </section>
+
+  <section class="panel">
+    <h2>命令 <span class="count" id="cmdCount"></span></h2>
+    <input id="search" placeholder="搜命令名或说明" spellcheck="false">
+    <div id="groups" class="scroll groups"></div>
+  </section>
+
+  <section class="panel">
+    <h2>报文</h2>
+    <div class="row">
+      <label>method</label>
+      <input id="method" spellcheck="false" placeholder="local.teacher->student.turnOffMute">
+    </div>
+    <div class="row spread">
+      <span class="hint" id="sendHint"></span>
+      <button id="fillParams" class="mini ghost">填入参数模板</button>
+    </div>
+    <textarea id="params" spellcheck="false" placeholder='{"teacherUid": "xxx"}'></textarea>
+    <div class="row">
+      <button id="send">发送</button>
+      <span class="hint" id="sendState"></span>
+    </div>
+    <div class="block-head">
+      <h3>实际发出的字节</h3>
+      <button class="mini" data-copy="payload">复制</button>
+    </div>
+    <pre id="payload" class="out scroll"></pre>
+    <div class="block-head">
+      <h3>回应</h3>
+      <button class="mini" data-copy="reply">复制</button>
+    </div>
+    <pre id="reply" class="out scroll"></pre>
+    <div id="fired" class="fired"></div>
+  </section>
+
+  <section class="panel">
+    <h2>自动化 <span class="count" id="ruleCount"></span></h2>
+    <p class="hint tight">触发方法发出后，自动跟一条动作。支持结尾 <code>*</code> 通配。</p>
+    <div id="rules" class="scroll rules"></div>
+    <details class="adder">
+      <summary>加一条规则</summary>
+      <div class="row">
+        <label>触发</label>
+        <input id="rTrigger" spellcheck="false" placeholder="local.teacher->student.startBroadcast">
+      </div>
+      <div class="row">
+        <label>动作</label>
+        <input id="rAction" spellcheck="false" placeholder="local.teacher->student.setProperty">
+      </div>
+      <div class="row">
+        <label>参数</label>
+        <input id="rParams" spellcheck="false" placeholder='{"displayMode":"window"}'>
+      </div>
+      <div class="row">
+        <label>次数</label>
+        <input id="rRepeat" value="1" spellcheck="false">
+        <label class="narrow">间隔ms</label>
+        <input id="rDelay" value="0" spellcheck="false">
+      </div>
+      <div class="row">
+        <button id="addRule">添加</button>
+        <button id="resetRules" class="ghost">恢复出厂</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel wide">
+    <div class="block-head">
+      <h2>日志</h2>
+      <div class="row tight-row">
+        <button class="mini" data-copy="log">复制全部</button>
+        <button class="mini ghost" id="clearLog">清空</button>
+      </div>
+    </div>
+    <pre id="log" class="out scroll tall"></pre>
+  </section>
+
+</main>
+
+<footer>
+  <p>命令名来自对 electronic-classroom.exe 的静态分析，一个字符都没改。参数名和报文信封是推断，没有抓到过真实报文对齐，所以参数填错不会报错，只会被对端忽略。</p>
+  <p class="small">仅限对自己拥有的设备使用。作者不对使用后果负责，完整条款见仓库 DISCLAIMER.md。</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
