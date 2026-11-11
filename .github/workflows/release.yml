@@ -44,6 +44,10 @@ jobs:
     name: 打包 (${{ matrix.label }})
     needs: verify
     runs-on: ${{ matrix.os }}
+    env:
+      # Windows runner 的控制台代码页是 cp1252，任何脚本打印中文都会崩。
+      # 产物自己会处理（main() 里 reconfigure），这里的脚本不会，统一给它。
+      PYTHONIOENCODING: utf-8
     strategy:
       fail-fast: false
       matrix:
@@ -126,7 +130,9 @@ jobs:
           test -f "$ECR_PROBE_HOME/resources/index.html"
           test -f "$ECR_PROBE_HOME/resources/app.js"
           test -f "$ECR_PROBE_HOME/resources/.resources.digest"
-          python -c "import json,os;d=json.load(open(os.environ['ECR_PROBE_HOME']+'/resources/.resources.digest'));print('digest 覆盖文件数:',len(d['files']))"
+          # 这行故意只用 ASCII：跑的是系统的 Python，不是被打包的那个，
+          # 它没有 _ensure_output_encoding()，往 cp1252 控制台打中文照样崩。
+          python -c "import json,os;d=json.load(open(os.environ['ECR_PROBE_HOME']+'/resources/.resources.digest'));print('digest covers files:',len(d['files']))"
 
           echo "--- 篡改后应能自己修回来 ---"
           echo "// tampered" >> "$ECR_PROBE_HOME/resources/app.js"
