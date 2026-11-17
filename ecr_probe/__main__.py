@@ -253,25 +253,35 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_screens() -> list[object] | None:
+    """读当前屏幕列表。拿不到就返回 None。
+
+    单独拆出来是因为 pywebview 在无界面环境里装不上，
+    算尺寸那部分得能脱离它单测。
+    """
+    try:
+        import webview
+
+        return list(webview.screens)
+    except Exception:
+        return None
+
+
 def _fit_to_screen(width: int, height: int, margin: int = 80) -> tuple[int, int]:
     """把窗口尺寸收进屏幕可用区域里。
 
     窗口比屏幕还大的话，底部那截永远看不到，只能靠拖边框，macOS 上
     干脆拖不出来。界面上做了滚动，所以窗口小一点也不影响用。
     """
-    try:
-        import webview
-
-        screens = webview.screens
-        if not screens:
-            return width, height
-        # 主屏（坐标原点在左上那块）。多屏时取最大那块。
-        screen = max(screens, key=lambda s: s.width * s.height)
-    except Exception:
+    screens = _read_screens()
+    if not screens:
         return width, height
 
-    avail_w = max(640, screen.width - margin)
-    avail_h = max(480, screen.height - margin)
+    # 主屏（坐标原点在左上那块）。多屏时取最大那块。
+    screen = max(screens, key=lambda s: s.width * s.height)  # type: ignore[attr-defined]
+
+    avail_w = max(640, screen.width - margin)  # type: ignore[attr-defined]
+    avail_h = max(480, screen.height - margin)  # type: ignore[attr-defined]
     return min(width, avail_w), min(height, avail_h)
 
 

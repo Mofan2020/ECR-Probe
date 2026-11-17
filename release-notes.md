@@ -1,4 +1,4 @@
-## ECR Probe v0.1.1 - Pre-release
+## ECR Probe v0.1.2 - Pre-release
 
 ### 本次更新中修复了下列问题：
 
