@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import pathlib
+import socket
+import struct
 
 import pytest
 
@@ -27,6 +29,46 @@ def server() -> MockServer:
     srv = MockServer(host="127.0.0.1", port=0, path="/").start()
     yield srv
     srv.stop()
+
+
+class _ResetServer:
+    """接受连接后立刻用 RST 断开。
+
+    真实被测端不认路径时经常这么干：TCP 握手成了，然后直接复位。
+    SO_LINGER 设成 0，close() 就发 RST 而不是 FIN——只有 RST 才会让
+    对面 recv() 抛 ConnectionResetError。
+    """
+
+    def __init__(self) -> None:
+        self._sock = socket.socket()
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(8)
+        self.port = self._sock.getsockname()[1]
+        self._stop = False
+
+    def __enter__(self) -> _ResetServer:
+        import threading
+
+        def serve() -> None:
+            while not self._stop:
+                try:
+                    conn, _ = self._sock.accept()
+                except OSError:
+                    return
+                conn.setsockopt(
+                    socket.SOL_SOCKET,
+                    socket.SO_LINGER,
+                    struct.pack("ii", 1, 0),
+                )
+                conn.close()
+
+        threading.Thread(target=serve, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._stop = True
+        self._sock.close()
 
 
 # ------------------------------------------------------------------ 守卫
@@ -84,6 +126,56 @@ def test_bad_params_json_is_reported(bridge: Bridge, server: MockServer) -> None
     res = bridge.send("a.b", "{not json")
     assert not res["ok"]
     assert "JSON" in res["error"]
+
+
+def test_connect_to_reset_peer_reports_readable_error(bridge: Bridge) -> None:
+    """对方握手途中复位，界面上不能出现 Win32 原文。
+
+    原文是「主机中的一个程序关闭了一个已建立的连接」——用户读到这句
+    既不知道谁断的，也不知道下一步该试什么。
+    """
+    with _ResetServer() as srv:
+        res = bridge.connect("127.0.0.1", srv.port, "/")
+
+    assert not res["ok"]
+    error = res["error"]
+    assert "对方主动断开" in error
+    assert "已建立的连接" not in error
+    assert "Connection reset" not in error
+
+
+def test_send_to_dead_peer_reports_readable_error(bridge: Bridge) -> None:
+    """连上之后对方把连接掐了，发送失败也得是人话。
+
+    这里必须先握手成功再复位，才能真正走到 send_text 那一段；
+    握手就失败的话走的是另一条分支，这条路就测不到了。
+    """
+    srv = MockServer(host="127.0.0.1", port=0, path="/", reset_after_handshake=True).start()
+    try:
+        conn = bridge.connect("127.0.0.1", srv.port, "/")
+        assert conn["ok"], conn
+        res = bridge.send("a.b", "")
+    finally:
+        srv.stop()
+
+    assert not res["ok"], "连接被掐了，发送必须报失败"
+    error = res["error"]
+    assert "对方主动断开" in error
+    assert "已建立的连接" not in error
+    assert "Connection reset" not in error
+
+
+def test_send_failure_still_returns_payload(bridge: Bridge) -> None:
+    """发送失败时也要给出报文，方便排查。"""
+    srv = MockServer(host="127.0.0.1", port=0, path="/", reset_after_handshake=True).start()
+    try:
+        bridge.connect("127.0.0.1", srv.port, "/")
+        res = bridge.send("a.b", '{"x": 1}')
+    finally:
+        srv.stop()
+
+    assert not res["ok"]
+    assert res["payload"], "失败时也要给出报文"
 
 
 def test_non_object_params_refused(bridge: Bridge, server: MockServer) -> None:

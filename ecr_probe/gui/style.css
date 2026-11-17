@@ -121,6 +121,10 @@ main {
   overflow-y: auto;
   display: grid;
   grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+  /* 行高按内容算，不要按剩余空间平分。
+     平分的话窗口一矮，每块面板就被压到内容高度以下，超出的部分
+     既被裁掉又滚不到——面板自己不再收缩，页面整体滚动。 */
+  grid-auto-rows: max-content;
   gap: 12px;
   padding: 10px 18px 16px;
   align-content: start;

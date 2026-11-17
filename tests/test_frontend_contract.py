@@ -69,6 +69,29 @@ def test_scrollable_containers_present() -> None:
         assert "scroll" in match.group(1), f"{element_id} 没带 scroll 类，会溢出被截断"
 
 
+def test_main_rows_are_content_sized() -> None:
+    """面板不能被压到内容高度以下。
+
+    main 是 grid，行高默认按剩余空间平分。窗口一矮，每块面板就被压扁，
+    超出部分既被裁掉又滚不到——用户看到的是缺了一截的界面。
+    行高按内容算，页面整体滚动。
+    """
+    css = (GUI_DIR / "style.css").read_text(encoding="utf-8")
+    main_block = re.search(r"^main\s*\{(.*?)\}", css, re.S | re.M)
+    assert main_block, "找不到 main 的样式块"
+    body = main_block.group(1)
+    assert "grid-auto-rows: max-content" in body, "main 的行高又变回平分了"
+    assert "overflow-y: auto" in body, "main 不能滚"
+
+
+def test_main_scrolls_rather_than_clips() -> None:
+    """body 自己不滚，滚的是 main。body 一滚，页头页脚就会跟着跑掉。"""
+    css = (GUI_DIR / "style.css").read_text(encoding="utf-8")
+    body_block = re.search(r"^body\s*\{(.*?)\}", css, re.S | re.M)
+    assert body_block, "找不到 body 的样式块"
+    assert "overflow: hidden" in body_block.group(1)
+
+
 def test_localhost_default_in_html() -> None:
     """默认主机必须是回环地址。"""
     html = (GUI_DIR / "index.html").read_text(encoding="utf-8")

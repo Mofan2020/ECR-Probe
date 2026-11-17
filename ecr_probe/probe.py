@@ -18,6 +18,7 @@ import socket
 from dataclasses import dataclass, field
 
 from . import guard, netlist
+from .neterror import describe
 from .wsclient import Handshake, WebSocketClient, WebSocketError
 
 # 候选路径。"/super_connect" 是从字符串表直接读到的；
@@ -116,7 +117,7 @@ def tcp_open(host: str, port: int, timeout: float = 0.25) -> PortProbe:
         sock.connect((addr, p))
         return PortProbe(port=port, open=True)
     except OSError as exc:
-        return PortProbe(port=port, open=False, error=str(exc))
+        return PortProbe(port=port, open=False, error=describe(exc))
     finally:
         sock.close()
 
@@ -130,7 +131,15 @@ def probe_paths(host: str, port: int, paths: tuple[str, ...] = CANDIDATE_PATHS,
         try:
             hs = client.connect()
         except (OSError, WebSocketError) as exc:
-            results.append(PathProbe(path=path, status=0, accepted=False, port=port, error=str(exc)))
+            results.append(
+                PathProbe(
+                    path=path,
+                    status=0,
+                    accepted=False,
+                    port=port,
+                    error=describe(exc),
+                )
+            )
             continue
         finally:
             client.close()

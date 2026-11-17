@@ -81,6 +81,8 @@ class MockServer:
     port: int = 0
     path: str = "/"
     echo: bool = True
+    # 握手成功之后立刻用 RST 断开，模拟对端收下握手就翻脸。
+    reset_after_handshake: bool = False
     received: list[str] = field(default_factory=list)
     handshakes: list[str] = field(default_factory=list)
     _sock: socket.socket | None = None
@@ -178,6 +180,17 @@ class MockServer:
                 "\r\n"
             )
             client.sendall(response.encode("ascii"))
+
+            if self.reset_after_handshake:
+                # SO_LINGER 设成 0，close() 发 RST 而不是 FIN。
+                # 对面下一次 send/recv 才会拿到 ConnectionResetError，
+                # FIN 的话对面只看到「连接已关闭」，测不到复位那条路。
+                client.setsockopt(
+                    socket.SOL_SOCKET,
+                    socket.SO_LINGER,
+                    struct.pack("ii", 1, 0),
+                )
+                return
 
             while not self._stop.is_set():
                 frame = _read_frame(client)

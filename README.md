@@ -150,7 +150,7 @@ ecr-probe send --port 33331 --path / \
 
 ## 它不保证能用
 
-仓库里 193 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
+仓库里 215 个测试全部打的是自己写的 mock 服务端。**没有任何一个测试对真实客户端发过请求。**
 
 静态分析确认了命令名和部分字段名，但没确认：
 
@@ -173,11 +173,12 @@ ecr_probe/
   `commands.py`     146 条命令目录
   rules.py        自动化规则 + 落盘
   probe.py        端口发现 + 路径握手 + 指纹
+  neterror.py     socket 错误翻译成人话
   bridge.py       pywebview 的 Python 侧
   clipboard.py    写系统剪贴板
   mockserver.py   测试用 WS 靶子
   gui/            index.html / style.css / app.js
-tests/            193 个
+tests/            215 个
 launcher.py       打包入口
 scripts/
   check-app-js.js app.js 假 DOM 冒烟测试

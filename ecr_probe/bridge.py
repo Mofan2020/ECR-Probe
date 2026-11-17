@@ -11,6 +11,7 @@ import threading
 import time
 
 from . import clipboard, commands, gate, guard, netlist, probe
+from .neterror import describe
 from .rules import RuleStore
 from .wsclient import WebSocketClient, WebSocketError
 
@@ -219,8 +220,8 @@ class Bridge:
             try:
                 hs = client.connect()
             except (OSError, WebSocketError) as exc:
-                self._log(f"连 {addr}:{p}{path} 失败：{exc}")
-                return {"ok": False, "error": str(exc)}
+                self._log(f"连 {addr}:{p}{path} 失败：{describe(exc)}")
+                return {"ok": False, "error": describe(exc)}
 
             if not hs.accepted:
                 client.close()
@@ -264,8 +265,8 @@ class Bridge:
         try:
             sent = self._client.send_text(req.payload)
         except (OSError, WebSocketError) as exc:
-            self._log(f"发送失败：{exc}")
-            return {"ok": False, "error": str(exc), "payload": req.pretty()}
+            self._log(f"发送失败：{describe(exc)}")
+            return {"ok": False, "error": describe(exc), "payload": req.pretty()}
 
         self._log(f"发出 {method}（{sent} 字节）")
         reply = None
@@ -275,7 +276,7 @@ class Bridge:
                 reply = frame[1].decode("utf-8", errors="replace")
                 self._log(f"收到 {len(reply)} 字节")
         except (OSError, WebSocketError) as exc:
-            self._log(f"等回应超时或出错：{exc}")
+            self._log(f"等回应超时或出错：{describe(exc)}")
 
         return {
             "ok": True,

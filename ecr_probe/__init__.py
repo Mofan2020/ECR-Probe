@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .commands import ALL_COMMANDS, GROUPS, build_request
 from .guard import NonLocalError, guard_target
